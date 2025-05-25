@@ -35,21 +35,45 @@ if ($isAdmin && isset($_GET['delete_user_id'])) {
 
 // Aggiunta sostanza utente
 if (!$isAdmin && $_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['action']) && $_POST['action'] === 'add_sostanza') {
+    $featureStmt = $pdo->prepare("SELECT is_enabled FROM settings WHERE feature_key = 'insert_drug'");
+    $featureStmt->execute();
+    $isEnabled = $featureStmt->fetchColumn();
+
     $tipoSostanzaId = intval($_POST['tipo_sostanza_id']);
     $quantita = intval($_POST['quantita']);
-
-    if ($tipoSostanzaId > 0 && $quantita > 0) {
-        try {
-            $insertStmt = $pdo->prepare("INSERT INTO sostanze (user_id , tipo_sostanza_id, quantita, data_inserimento) VALUES (?, ?, ?, NOW())");
-            $insertStmt->execute([$_SESSION['user_id'], $tipoSostanzaId, $quantita]);
-            $successMessage = "Sostanza aggiunta con successo.";
-        } catch (PDOException $e) {
-            $errorMessage = "Errore nell'inserimento della sostanza: " . $e->getMessage();
-        }
+    if ($isEnabled != 1) {
+        // Feature disabilitata: blocca l'inserimento
+        $errorMessage = "❌ Inserimento sostanze disabilitato.";
     } else {
-        $errorMessage = "Dati non validi per aggiungere la sostanza.";
+        if ($tipoSostanzaId > 0 && $quantita > 0) {
+            try {
+                $insertStmt = $pdo->prepare("INSERT INTO sostanze (user_id, tipo_sostanza_id, quantita, data_inserimento) VALUES (?, ?, ?, NOW())");
+                $insertStmt->execute([$_SESSION['user_id'], $tipoSostanzaId, $quantita]);
+                $successMessage = "Sostanza aggiunta con successo.";
+
+            } catch (PDOException $e) {
+                $errorMessage = "Errore nell'inserimento della sostanza: " . $e->getMessage();
+            }
+        } else {
+            $errorMessage = "Dati non validi per aggiungere la sostanza.";
+        }
     }
 }
+
+
+if (!$isAdmin) {
+    $todayStmt = $pdo->prepare("
+        SELECT s.id, s.user_id, s.quantita, s.data_inserimento, t.nome AS nome_sostanza
+FROM sostanze s
+JOIN tipi_sostanze t ON s.tipo_sostanza_id = t.id
+WHERE s.user_id = ?
+AND s.data_inserimento >= CURDATE()
+AND s.data_inserimento < CURDATE() + INTERVAL 1 DAY
+    ");
+    $todayStmt->execute([$_SESSION['user_id']]);
+    $sostanzeOggi = $todayStmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
 
 
 
@@ -260,8 +284,7 @@ if ($isAdmin) {
         <h2>Ciao, <?php echo htmlspecialchars($_SESSION["username"]); ?>!</h2>
         <?php if ($nomeFamiglia)
             echo "<p>Famiglia: " . htmlspecialchars($nomeFamiglia) . "</p>"; ?>
-
-        <p>Benvenuto nella tua dashboard.</p>
+            <br>
 
         <?php if ($isAdmin): ?>
             <p class="admin">✅ Hai i privilegi di amministratore</p>
@@ -304,6 +327,7 @@ if ($isAdmin) {
                 </tbody>
             </table>
 
+            <br>
             <hr>
             <h3>Gestione sostanze</h3>
             <table>
@@ -334,11 +358,11 @@ if ($isAdmin) {
             </table>
 
 
-           
 
+            <br>
             <hr>
 
-            
+
             <h3>Resoconto droghe</h3>
             <form method="GET" action="visualizza.php" style="margin-bottom: 20px;">
                 <label for="data_da">Data da:</label>
@@ -349,13 +373,13 @@ if ($isAdmin) {
                 <input type="date" id="data_a" name="data_a"
                     value="<?php echo isset($_GET['data_a']) ? htmlspecialchars($_GET['data_a']) : ''; ?>" required>
 
-                 <button type="submit"
+                <button type="submit"
                     style="margin-top: 20px; padding: 10px 20px; background-color: #007BFF; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
-                    Visualizza droghe di questa settimana 🔍
+                    Visualizza droghe di queste date 🔍
                 </button>
             </form>
 
-             <hr>
+            <hr>
             <h3>Gestione funzionalità</h3>
             <form method="post" style="margin-top: 10px;">
                 <input type="hidden" name="action" value="toggle_insert_drug">
@@ -369,33 +393,63 @@ if ($isAdmin) {
             <br>
 
         <?php else: ?>
-            <p>🔒 Accesso base</p>
+            <!-- 🔒 Accesso base -->
 
-            <form method="post" action="dashboard.php"
-                style="border:1px solid #ccc; padding: 15px; border-radius: 8px; max-width: 400px;">
+          
+            <div style="display: flex; justify-content: center; align-items: center;">
+                <form method="post" action="dashboard.php"
+                    style="border:1px solid #ccc; padding: 15px; border-radius: 8px; max-width: 400px; width: 100%;">
 
-                <input type="hidden" name="action" value="add_sostanza">
 
-                <p><strong>Scegli la sostanza:</strong></p>
-                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                    <?php foreach ($sostanze_abilitate as $sostanza): ?>
-                        <label
-                            style="cursor:pointer; border: 2px solid #888; border-radius: 6px; padding: 8px 12px; flex: 1 0 45%; text-align:center; background:#f7f7f7; user-select:none;">
-                            <input type="radio" name="tipo_sostanza_id" value="<?= htmlspecialchars($sostanza['id']) ?>"
-                                required style="margin-right: 6px;">
-                            <?= htmlspecialchars($sostanza['nome']) ?>
-                        </label>
-                    <?php endforeach; ?>
-                </div>
+                    <input type="hidden" name="action" value="add_sostanza">
 
-                <label for="quantita" style="margin-top: 15px; display: block;">Quantità (min 1):</label>
-                <input type="number" name="quantita" id="quantita" min="1" placeholder="Es. 200" required
-                    style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #aaa;">
+                    <p><strong>Scegli la sostanza:</strong></p>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <?php foreach ($sostanze_abilitate as $sostanza): ?>
+                            <label
+                                style="cursor:pointer; border: 2px solid #888; border-radius: 6px; padding: 8px 12px; flex: 1 0 45%; text-align:center; background:#f7f7f7; user-select:none;">
+                                <input type="radio" name="tipo_sostanza_id" value="<?= htmlspecialchars($sostanza['id']) ?>"
+                                    required style="margin-right: 6px;">
+                                <?= htmlspecialchars($sostanza['nome']) ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
 
-                <button type="submit"
-                    style="margin-top: 15px; background-color: #007BFF; border:none; color:white; padding: 10px 15px; border-radius: 6px; cursor:pointer; width: 100%;">Aggiungi
-                    sostanza</button>
-            </form>
+                    <label for="quantita" style="margin-top: 15px; display: block;">Quantità (min 1):</label>
+                    <input type="number" name="quantita" id="quantita" min="1" placeholder="Es. 200" required
+                        style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #aaa;">
+
+                    <button type="submit"
+                        style="margin-top: 15px; background-color: #007BFF; border:none; color:white; padding: 10px 15px; border-radius: 6px; cursor:pointer; width: 100%;">Aggiungi
+                        sostanza</button>
+                </form>
+            </div>
+
+
+            <?php if (!empty($sostanzeOggi)): ?>
+                <h3>Sostanze inserite oggi</h3>
+                <table border="1" cellpadding="5" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Tipo Sostanza</th>
+                            <th>Quantità</th>
+                            <th>Data Inserimento</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($sostanzeOggi as $sostanza): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($sostanza['nome_sostanza']) ?></td>
+                                <td><?= htmlspecialchars($sostanza['quantita']) ?></td>
+                                <td><?= htmlspecialchars($sostanza['data_inserimento']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <p>Nessuna sostanza inserita oggi.</p>
+            <?php endif; ?>
+
 
 
 
