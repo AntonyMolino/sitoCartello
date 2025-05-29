@@ -316,16 +316,31 @@
         </form>
 
         <?php if ($message): ?>
-            <div class="message"><?= htmlspecialchars($message) ?></div>
+            <div id="feedback-message"
+                class="message <?= strpos($message, 'errore') !== false || strpos($message, 'Errore') !== false ? 'error' : '' ?>">
+                <?= htmlspecialchars($message) ?>
+            </div>
         <?php endif; ?>
 
 
 
 
 
-            <br>
+        <br>
         <a href="dashboard.php">← Torna alla Dashboard</a>
     </div>
+
+    <script>
+        setTimeout(() => {
+            const msg = document.getElementById('feedback-message');
+            if (msg) {
+                msg.style.transition = "opacity 0.5s ease";
+                msg.style.opacity = 0;
+                setTimeout(() => msg.remove(), 500);
+            }
+        }, 5000);
+    </script>
+
 </body>
 
 </html>
