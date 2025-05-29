@@ -280,6 +280,7 @@
         ?>
 
 
+        <br>
         <form method="POST" action="">
             <h2>Aggiungi sostanza/sanzione</h2>
 
@@ -322,7 +323,7 @@
 
 
 
-
+            <br>
         <a href="dashboard.php">← Torna alla Dashboard</a>
     </div>
 </body>
